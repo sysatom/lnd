@@ -35,6 +35,9 @@ You are an expert Golang developer and System Architect working on **LND**, a TU
     - Avoid `syscall` constants that vary by architecture unless handled safely.
 5.  **Language**:
     - All code comments, documentation, and commit messages must be in **English**.
+6.  **Testing**:
+    - Write unit tests for all `collector` logic (`_test.go`).
+    - Ensure tests can run in non-root environments (skip privileged tests if needed).
 
 ## Preferred Libraries
 - **TUI**: `github.com/charmbracelet/bubbletea`
