@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-REPO="yourusername/lnd"
+REPO="sysatom/lnd"
 BINARY="lnd"
 INSTALL_DIR="/usr/local/bin"
 

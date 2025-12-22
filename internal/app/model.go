@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/sysatom/lnd/internal/build"
 	"github.com/sysatom/lnd/internal/collector"
 	"github.com/sysatom/lnd/internal/ui"
 	"github.com/sysatom/lnd/internal/ui/components"
@@ -17,9 +18,10 @@ const (
 	TabConnectivity = 1
 	TabDashboard    = 2
 	TabKernel       = 3
+	TabAbout        = 4
 )
 
-var tabs = []string{"Interfaces", "Connectivity", "Dashboard", "Kernel"}
+var tabs = []string{"Interfaces", "Connectivity", "Dashboard", "Kernel", "About"}
 
 type Model struct {
 	ActiveTab int
@@ -206,7 +208,7 @@ func (m Model) View() string {
 	}
 
 	// Header
-	header := components.Header("LND", "v0.1.0")
+	header := components.Header("LND", build.Version)
 
 	// Tabs
 	var tabViews []string
@@ -230,6 +232,8 @@ func (m Model) View() string {
 		content = m.renderDashboard()
 	case TabKernel:
 		content = m.renderKernel()
+	case TabAbout:
+		content = m.renderAbout()
 	}
 
 	// Footer
@@ -335,5 +339,20 @@ func (m Model) renderKernel() string {
 	s += "\nUDP Issues:\n"
 	s += fmt.Sprintf("  RcvbufErrors: %d\n", k.UDPRcvbufErrors)
 
+	return s
+}
+
+func (m Model) renderAbout() string {
+	s := ui.TitleStyle.Render("LND - Linux Network Diagnoser") + "\n\n"
+	s += fmt.Sprintf("Version:   %s\n", build.Version)
+	s += fmt.Sprintf("Commit:    %s\n", build.Commit)
+	s += fmt.Sprintf("Date:      %s\n", build.Date)
+	s += fmt.Sprintf("Built By:  %s\n", build.BuiltBy)
+	s += "\n"
+	s += "GitHub:    https://github.com/sysatom/lnd\n"
+	s += "License:   MIT\n"
+	s += "\n"
+	s += "A TUI-based network diagnostic tool for Linux.\n"
+	s += "Use 'tab' to switch between views.\n"
 	return s
 }
