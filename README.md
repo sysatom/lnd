@@ -1,10 +1,6 @@
 # LND - Linux Network Diagnoser
 
 <p align="center">
-  <img src="https://via.placeholder.com/800x400.png?text=LND+TUI+Screenshot" alt="LND Dashboard">
-</p>
-
-<p align="center">
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/platform-linux-lightgrey?style=flat-square" alt="Platform">
 </p>
