@@ -2,7 +2,7 @@ package components
 
 import (
 	"github.com/charmbracelet/lipgloss"
-	"github.com/yourusername/lnd/internal/ui"
+	"github.com/sysatom/lnd/internal/ui"
 )
 
 func Header(title string, version string) string {

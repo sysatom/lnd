@@ -20,7 +20,7 @@
 ## Installation
 ```bash
 # Automatic install
-curl -sfL https://github.com/YOUR_USERNAME/lnd/releases/latest/download/install.sh | sudo bash
+curl -sfL https://github.com/sysatom/lnd/releases/latest/download/install.sh | sudo bash
 ```
 
 ## Usage

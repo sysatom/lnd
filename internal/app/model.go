@@ -7,9 +7,9 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/yourusername/lnd/internal/collector"
-	"github.com/yourusername/lnd/internal/ui"
-	"github.com/yourusername/lnd/internal/ui/components"
+	"github.com/sysatom/lnd/internal/collector"
+	"github.com/sysatom/lnd/internal/ui"
+	"github.com/sysatom/lnd/internal/ui/components"
 )
 
 const (

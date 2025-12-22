@@ -1,4 +1,4 @@
-module github.com/yourusername/lnd
+module github.com/sysatom/lnd
 
 go 1.24.5
 
