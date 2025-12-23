@@ -2,6 +2,8 @@ package app
 
 import (
 	"fmt"
+	"net"
+	"strconv"
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -9,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sysatom/lnd/internal/build"
 	"github.com/sysatom/lnd/internal/collector"
+	"github.com/sysatom/lnd/internal/config"
 	"github.com/sysatom/lnd/internal/ui"
 	"github.com/sysatom/lnd/internal/ui/components"
 )
@@ -35,29 +38,54 @@ type Model struct {
 	Connectivity collector.ConnectivityStats
 	Traffic      collector.TrafficStats
 	Kernel       collector.KernelStats
+	NatInfo      []collector.NatInfo
 
 	// Collectors
 	sysCollector     *collector.SystemCollector
 	connCollector    *collector.ConnectivityCollector
 	trafficCollector *collector.TrafficCollector
 	kernelCollector  *collector.KernelCollector
+	natCollector     *collector.NatCollector
 
 	// Loading states
 	LoadingSystem  bool
 	LoadingConn    bool
 	LoadingTraffic bool
 	LoadingKernel  bool
+	LoadingNat     bool
 }
 
-func NewModel() Model {
+func NewModel(cfg *config.Config) Model {
 	k, _ := collector.NewKernelCollector() // Handle error gracefully in Collect if nil
+
+	var stunTargets []collector.StunTarget
+	for _, s := range cfg.StunServers {
+		host, portStr, err := net.SplitHostPort(s)
+		if err != nil {
+			// If split fails, assume it's just a host and use default port
+			host = s
+			portStr = "3478"
+		}
+		port, err := strconv.Atoi(portStr)
+		if err != nil {
+			port = 3478
+		}
+
+		stunTargets = append(stunTargets, collector.StunTarget{
+			Host: host,
+			Port: port,
+		})
+	}
+
 	return Model{
 		sysCollector:     collector.NewSystemCollector(),
 		connCollector:    collector.NewConnectivityCollector(),
 		trafficCollector: collector.NewTrafficCollector(),
 		kernelCollector:  k,
+		natCollector:     collector.NewNatCollector(stunTargets),
 		LoadingSystem:    true,
 		LoadingConn:      true,
+		LoadingNat:       true,
 		// Traffic and Kernel start as false, will be triggered by Init/Tick
 	}
 }
@@ -66,6 +94,7 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		fetchSystemInfo(m.sysCollector),
 		fetchConnectivity(m.connCollector),
+		fetchNatInfo(m.natCollector),
 		// Start the tick loop
 		tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
 			return TickMsg(t)
@@ -78,6 +107,7 @@ type SystemInfoMsg collector.HostInfo
 type ConnectivityMsg collector.ConnectivityStats
 type TrafficMsg collector.TrafficStats
 type KernelMsg collector.KernelStats
+type NatMsg []collector.NatInfo
 type TickMsg time.Time
 
 // Commands
@@ -98,6 +128,19 @@ func fetchConnectivity(c *collector.ConnectivityCollector) tea.Cmd {
 			// Handle error in stats
 		}
 		return ConnectivityMsg(stats)
+	}
+}
+
+func fetchNatInfo(c *collector.NatCollector) tea.Cmd {
+	return func() tea.Msg {
+		info, err := c.Collect()
+		if err != nil {
+			// If Collect returns error, it might be a general error, but we changed Collect to return []NatInfo
+			// and error is usually nil unless something catastrophic happens.
+			// But let's handle it.
+			return NatMsg([]collector.NatInfo{{Error: err}})
+		}
+		return NatMsg(info)
 	}
 }
 
@@ -170,6 +213,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
 			return fetchConnectivity(m.connCollector)()
 		}))
+
+	case NatMsg:
+		m.NatInfo = []collector.NatInfo(msg)
+		m.LoadingNat = false
 
 	case TrafficMsg:
 		m.LoadingTraffic = false
@@ -300,6 +347,23 @@ func (m Model) renderConnectivity() string {
 	dns := m.Connectivity.DNS
 	s += fmt.Sprintf("  Local Resolver: %s\n", dns.LocalResolverTime)
 	s += fmt.Sprintf("  Public (1.1.1.1): %s\n", dns.PublicResolverTime)
+
+	s += "\nNAT Status:\n"
+	if m.LoadingNat {
+		s += "  Probing NAT Type...\n"
+	} else {
+		for _, info := range m.NatInfo {
+			s += fmt.Sprintf("  Target: %s\n", info.Target)
+			if info.Error != nil {
+				s += fmt.Sprintf("    Error: %v\n", info.Error)
+			} else {
+				s += fmt.Sprintf("    Type: %s\n", info.NatType)
+				s += fmt.Sprintf("    Public IP: %s\n", info.PublicIP)
+				s += fmt.Sprintf("    Local IP: %s\n", info.LocalIP)
+			}
+			s += "\n"
+		}
+	}
 
 	return s
 }

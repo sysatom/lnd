@@ -11,6 +11,7 @@
 - **🩺 Kernel-level diagnostics**: real-time TCP retransmission rate calculation and monitoring of UDP buffer overflows.
 - **🖥️ Deep environment insights**: detect NIC driver versions, offload features, and key sysctl parameters.
 - **⚡ Real-time monitoring**: millisecond updates for bandwidth, packet loss, and latency jitter.
+- **🌐 NAT & Connectivity**: STUN-based NAT type detection and multi-target connectivity probing.
 - **📦 Ready to use**: single static binary, no dependencies, supports AMD64/ARM64.
 
 ## Installation
@@ -24,3 +25,16 @@ Requires root privileges to access low-level data:
 ```bash
 sudo lnd
 ```
+
+## Configuration
+
+LND supports configuration via a YAML file. By default, it looks for `~/.lnd.yaml`.
+
+You can also specify a config file using the `--config` flag:
+```bash
+sudo lnd --config /path/to/config.yaml
+```
+
+### Example Configuration
+
+Ref. config.example.yaml
