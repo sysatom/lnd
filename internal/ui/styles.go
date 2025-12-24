@@ -44,4 +44,7 @@ var (
 			BorderForeground(PrimaryColor).
 			Foreground(PrimaryColor).
 			Bold(true)
+
+	DividerStyle = lipgloss.NewStyle().
+			Foreground(SubtleColor)
 )

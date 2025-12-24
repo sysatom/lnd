@@ -1,11 +1,14 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -21,10 +24,20 @@ const (
 	TabConnectivity = 1
 	TabDashboard    = 2
 	TabKernel       = 3
-	TabAbout        = 4
+	TabDNS          = 4
+	TabAbout        = 5
 )
 
-var tabs = []string{"Interfaces", "Connectivity", "Dashboard", "Kernel", "About"}
+var tabs = []string{"Interfaces", "Connectivity", "Dashboard", "Kernel", "DNS", "About"}
+
+var dnsRecordTypes = []collector.DNSRecordType{
+	"Auto", collector.RecordA, collector.RecordAAAA, collector.RecordCNAME, collector.RecordMX,
+	collector.RecordTXT, collector.RecordNS, collector.RecordPTR, collector.RecordSRV, collector.RecordCAA,
+}
+
+var dnsProtocols = []collector.DNSProtocol{
+	collector.ProtoUDP, collector.ProtoTCP, collector.ProtoDoT, collector.ProtoDoH,
+}
 
 type Model struct {
 	ActiveTab int
@@ -39,6 +52,8 @@ type Model struct {
 	Traffic      collector.TrafficStats
 	Kernel       collector.KernelStats
 	NatInfo      []collector.NatInfo
+	DNSResult    *collector.DNSLookupResult
+	DNSPing      *collector.PingResult
 
 	// Collectors
 	sysCollector     *collector.SystemCollector
@@ -46,6 +61,16 @@ type Model struct {
 	trafficCollector *collector.TrafficCollector
 	kernelCollector  *collector.KernelCollector
 	natCollector     *collector.NatCollector
+	dnsCollector     *collector.DNSCollector
+
+	// DNS UI State
+	DNSServers         []collector.DNSServer
+	DNSInput           textinput.Model
+	DNSServerInput     textinput.Model
+	DNSFocus           int // 0: Domain, 1: Server
+	SelectedDNSServer  int
+	SelectedRecordType int
+	SelectedProtocol   int // 0: UDP, 1: TCP, 2: DoT, 3: DoH
 
 	// Loading states
 	LoadingSystem  bool
@@ -53,6 +78,8 @@ type Model struct {
 	LoadingTraffic bool
 	LoadingKernel  bool
 	LoadingNat     bool
+	LoadingDNS     bool
+	LoadingDNSPing bool
 }
 
 func NewModel(cfg *config.Config) Model {
@@ -77,17 +104,78 @@ func NewModel(cfg *config.Config) Model {
 		})
 	}
 
-	return Model{
+	// Initialize DNS Servers
+	// Start with defaults (excluding Custom)
+	var dnsServers []collector.DNSServer
+	defaults := collector.DefaultDNSServers
+	// Find "Custom" index
+	customIdx := -1
+	for i, s := range defaults {
+		if s.Name == "Custom" {
+			customIdx = i
+			break
+		}
+	}
+
+	if customIdx != -1 {
+		dnsServers = append(dnsServers, defaults[:customIdx]...)
+	} else {
+		dnsServers = append(dnsServers, defaults...)
+	}
+
+	// Add Configured Servers
+	for _, s := range cfg.DNSServers {
+		dnsServers = append(dnsServers, collector.DNSServer{
+			Name:    s.Name,
+			Address: s.Address,
+			Proto:   collector.DNSProtocol(s.Proto),
+		})
+	}
+
+	// Add Custom at the end
+	if customIdx != -1 {
+		dnsServers = append(dnsServers, defaults[customIdx])
+	}
+
+	ti := textinput.New()
+	ti.Placeholder = "Enter domain or IP..."
+	ti.Focus()
+	ti.CharLimit = 255
+	ti.Width = 30
+
+	si := textinput.New()
+	si.Placeholder = "e.g. 1.1.1.1:853 or https://..."
+	si.CharLimit = 255
+	si.Width = 30
+
+	m := Model{
 		sysCollector:     collector.NewSystemCollector(),
 		connCollector:    collector.NewConnectivityCollector(),
 		trafficCollector: collector.NewTrafficCollector(),
 		kernelCollector:  k,
 		natCollector:     collector.NewNatCollector(stunTargets),
+		dnsCollector:     collector.NewDNSCollector(),
+		DNSServers:       dnsServers,
+		DNSInput:         ti,
+		DNSServerInput:   si,
 		LoadingSystem:    true,
 		LoadingConn:      true,
 		LoadingNat:       true,
 		// Traffic and Kernel start as false, will be triggered by Init/Tick
 	}
+
+	// Sync initial protocol
+	if len(m.DNSServers) > 0 {
+		proto := m.DNSServers[0].Proto
+		for i, p := range dnsProtocols {
+			if p == proto {
+				m.SelectedProtocol = i
+				break
+			}
+		}
+	}
+
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
@@ -108,6 +196,8 @@ type ConnectivityMsg collector.ConnectivityStats
 type TrafficMsg collector.TrafficStats
 type KernelMsg collector.KernelStats
 type NatMsg []collector.NatInfo
+type DNSMsg collector.DNSLookupResult
+type DNSPingMsg collector.PingResult
 type TickMsg time.Time
 
 // Commands
@@ -167,6 +257,29 @@ func fetchKernel(c *collector.KernelCollector) tea.Cmd {
 	}
 }
 
+func fetchDNS(c *collector.DNSCollector, domain string, recordType collector.DNSRecordType, server collector.DNSServer) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		// Handle Auto type
+		if recordType == "Auto" {
+			// If IP, use PTR. If Domain, use A.
+			if net.ParseIP(domain) != nil {
+				recordType = collector.RecordPTR
+			} else {
+				recordType = collector.RecordA
+			}
+		}
+		return DNSMsg(c.Lookup(ctx, domain, recordType, server))
+	}
+}
+
+func fetchSinglePing(c *collector.ConnectivityCollector, target string) tea.Cmd {
+	return func() tea.Msg {
+		return DNSPingMsg(c.Ping(target))
+	}
+}
+
 func tickTraffic() tea.Cmd {
 	return tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
 		return TickMsg(t)
@@ -185,9 +298,89 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "tab", "right":
+		case "tab":
 			m.ActiveTab = (m.ActiveTab + 1) % len(tabs)
-		case "shift+tab", "left":
+			return m, nil
+		case "shift+tab":
+			m.ActiveTab = (m.ActiveTab - 1 + len(tabs)) % len(tabs)
+			return m, nil
+		}
+
+		if m.ActiveTab == TabDNS {
+			isCustom := m.DNSServers[m.SelectedDNSServer].Name == "Custom"
+
+			switch msg.String() {
+			case "enter":
+				m.LoadingDNS = true
+				m.DNSResult = nil // Clear previous result
+				m.DNSPing = nil   // Clear previous ping
+				server := m.DNSServers[m.SelectedDNSServer]
+				if isCustom {
+					server.Address = m.DNSServerInput.Value()
+				}
+				server.Proto = dnsProtocols[m.SelectedProtocol]
+				cmds = append(cmds, fetchDNS(m.dnsCollector, m.DNSInput.Value(), dnsRecordTypes[m.SelectedRecordType], server))
+				return m, tea.Batch(cmds...)
+
+			case "down":
+				m.SelectedDNSServer = (m.SelectedDNSServer + 1) % len(m.DNSServers)
+				m.DNSFocus = 0
+				m.DNSInput.Focus()
+				m.DNSServerInput.Blur()
+				// Sync protocol
+				proto := m.DNSServers[m.SelectedDNSServer].Proto
+				for i, p := range dnsProtocols {
+					if p == proto {
+						m.SelectedProtocol = i
+						break
+					}
+				}
+
+			case "up":
+				m.SelectedDNSServer = (m.SelectedDNSServer - 1 + len(m.DNSServers)) % len(m.DNSServers)
+				m.DNSFocus = 0
+				m.DNSInput.Focus()
+				m.DNSServerInput.Blur()
+				// Sync protocol
+				proto := m.DNSServers[m.SelectedDNSServer].Proto
+				for i, p := range dnsProtocols {
+					if p == proto {
+						m.SelectedProtocol = i
+						break
+					}
+				}
+
+			case "ctrl+down":
+				if isCustom {
+					m.DNSFocus = 1
+					m.DNSInput.Blur()
+					m.DNSServerInput.Focus()
+				}
+
+			case "ctrl+up":
+				m.DNSFocus = 0
+				m.DNSInput.Focus()
+				m.DNSServerInput.Blur()
+
+			case "ctrl+t":
+				m.SelectedRecordType = (m.SelectedRecordType + 1) % len(dnsRecordTypes)
+			case "ctrl+p":
+				m.SelectedProtocol = (m.SelectedProtocol + 1) % len(dnsProtocols)
+			}
+			var cmd tea.Cmd
+			if m.DNSFocus == 0 {
+				m.DNSInput, cmd = m.DNSInput.Update(msg)
+			} else {
+				m.DNSServerInput, cmd = m.DNSServerInput.Update(msg)
+			}
+			cmds = append(cmds, cmd)
+			return m, tea.Batch(cmds...)
+		}
+
+		switch msg.String() {
+		case "right":
+			m.ActiveTab = (m.ActiveTab + 1) % len(tabs)
+		case "left":
 			m.ActiveTab = (m.ActiveTab - 1 + len(tabs)) % len(tabs)
 		}
 
@@ -225,6 +418,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case KernelMsg:
 		m.LoadingKernel = false
 		m.Kernel = collector.KernelStats(msg)
+
+	case DNSMsg:
+		m.LoadingDNS = false
+		res := collector.DNSLookupResult(msg)
+		m.DNSResult = &res
+
+		// Trigger Ping if we have a valid result
+		if res.Error == nil {
+			target := ""
+			// If input was IP, ping that IP
+			if net.ParseIP(m.DNSInput.Value()) != nil {
+				target = m.DNSInput.Value()
+			} else if len(res.Records) > 0 {
+				// If we got records, check if any are IPs (A/AAAA)
+				// Records are strings like "google.com. 300 IN A 1.2.3.4"
+				// We need to parse the IP from the record string
+				for _, rec := range res.Records {
+					parts := strings.Fields(rec)
+					if len(parts) > 0 {
+						last := parts[len(parts)-1]
+						if net.ParseIP(last) != nil {
+							target = last
+							break
+						}
+					}
+				}
+			}
+
+			if target != "" {
+				m.LoadingDNSPing = true
+				cmds = append(cmds, fetchSinglePing(m.connCollector, target))
+			}
+		}
+
+	case DNSPingMsg:
+		m.LoadingDNSPing = false
+		res := collector.PingResult(msg)
+		m.DNSPing = &res
 
 	case TickMsg:
 		// Trigger updates if not already loading
@@ -279,6 +510,8 @@ func (m Model) View() string {
 		content = m.renderDashboard()
 	case TabKernel:
 		content = m.renderKernel()
+	case TabDNS:
+		content = m.renderDNS()
 	case TabAbout:
 		content = m.renderAbout()
 	}
@@ -418,5 +651,80 @@ func (m Model) renderAbout() string {
 	s += "\n"
 	s += "A TUI-based network diagnostic tool for Linux.\n"
 	s += "Use 'tab' to switch between views.\n"
+	return s
+}
+
+func (m Model) renderDNS() string {
+	s := ui.TitleStyle.Render("DNS Lookup Tool") + "\n\n"
+
+	// Input
+	s += fmt.Sprintf("Domain/IP: %s\n", m.DNSInput.View())
+
+	// Settings
+	server := m.DNSServers[m.SelectedDNSServer]
+	s += fmt.Sprintf("Server:    %s (Use Up/Down to change)\n", server.Name)
+
+	if server.Name == "Custom" {
+		s += fmt.Sprintf("  Address: %s (Ctrl+Down to edit)\n", m.DNSServerInput.View())
+	}
+
+	recordType := dnsRecordTypes[m.SelectedRecordType]
+	s += fmt.Sprintf("Type:      %s (Use Ctrl+t to change)\n", recordType)
+
+	proto := dnsProtocols[m.SelectedProtocol]
+	s += fmt.Sprintf("Protocol:  %s (Use Ctrl+p to change)\n", proto)
+
+	s += "\nPress Enter to Query\n"
+	s += ui.DividerStyle.Render(strings.Repeat("-", m.Width-4)) + "\n"
+
+	if m.LoadingDNS {
+		s += "\nQuerying...\n"
+	} else if m.DNSResult != nil {
+		res := m.DNSResult
+		if res.Error != nil {
+			s += fmt.Sprintf("\nError: %v\n", res.Error)
+		} else {
+			s += fmt.Sprintf("\nServer: %s (%s)\n", res.Server, res.Protocol)
+			s += fmt.Sprintf("Latency: %s\n", res.Latency)
+			s += fmt.Sprintf("Response: %s\n", res.ResponseCode)
+
+			if res.CertInfo != nil {
+				s += "\nTLS Certificate:\n"
+				s += fmt.Sprintf("  Subject: %s\n", res.CertInfo.Subject)
+				s += fmt.Sprintf("  Issuer:  %s\n", res.CertInfo.Issuer)
+				s += fmt.Sprintf("  Expires: %s\n", res.CertInfo.NotAfter.Format(time.RFC822))
+				// s += fmt.Sprintf("  Version: TLS 1.%d\n", res.CertInfo.Version-0x0301+1)
+			}
+
+			s += "\nRecords:\n"
+			if len(res.Records) == 0 {
+				s += "  (No records found)\n"
+			}
+			for _, rec := range res.Records {
+				s += fmt.Sprintf("  %s\n", rec)
+			}
+
+			// Ping Result
+			s += "\nConnectivity:\n"
+			if m.LoadingDNSPing {
+				s += "  Checking connectivity...\n"
+			} else if m.DNSPing != nil {
+				ping := m.DNSPing
+				if ping.Error != nil {
+					s += fmt.Sprintf("  %s: %s\n", ping.Target, ui.ErrorStyle.Render(fmt.Sprintf("Failed (%v)", ping.Error)))
+				} else {
+					status := "OK"
+					style := ui.SubtitleStyle
+					if ping.PacketLoss > 0 {
+						status = "Lossy"
+						style = ui.WarningStyle
+					}
+					s += fmt.Sprintf("  %s: %s (Loss: %.0f%%, RTT: %s)\n",
+						ping.Target, style.Render(status), ping.PacketLoss, ping.AvgRtt)
+				}
+			}
+		}
+	}
+
 	return s
 }

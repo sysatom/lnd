@@ -7,8 +7,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type DNSServerConfig struct {
+	Name    string `yaml:"name"`
+	Address string `yaml:"address"`
+	Proto   string `yaml:"proto"`
+}
+
 type Config struct {
-	StunServers []string `yaml:"stun_servers"`
+	StunServers []string          `yaml:"stun_servers"`
+	DNSServers  []DNSServerConfig `yaml:"dns_servers"`
 }
 
 func Default() *Config {
@@ -17,6 +24,7 @@ func Default() *Config {
 			"stun3.l.google.com:19302",
 			"stun.l.google.com:19302",
 		},
+		DNSServers: []DNSServerConfig{},
 	}
 }
 

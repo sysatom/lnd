@@ -97,6 +97,10 @@ func getDefaultGateway() (string, error) {
 	return "", fmt.Errorf("no default gateway found")
 }
 
+func (c *ConnectivityCollector) Ping(target string) PingResult {
+	return pingTarget(target)
+}
+
 func pingTarget(target string) PingResult {
 	pinger, err := ping.NewPinger(target)
 	if err != nil {
