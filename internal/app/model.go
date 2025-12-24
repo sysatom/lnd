@@ -641,10 +641,16 @@ func (m Model) renderDashboard() string {
 		s += "Loading System Info...\n\n"
 	} else {
 		info := m.HostInfo
-		s += fmt.Sprintf("System: %s (%s)\n", ui.TitleStyle.Render(info.Hostname), info.Arch)
-		s += fmt.Sprintf("Kernel: %s\n", info.KernelVersion)
-		s += fmt.Sprintf("Uptime: %s\n", info.Uptime)
-		s += fmt.Sprintf("Load:   %.2f\n\n", info.LoadAvg)
+		s += "System Information:\n"
+		s += fmt.Sprintf("  Hostname:         %s\n", ui.TitleStyle.Render(info.Hostname))
+		s += fmt.Sprintf("  Operating System: %s %s (%s)\n", info.Platform, info.PlatformVersion, info.OS)
+		s += fmt.Sprintf("  Kernel:           %s\n", info.KernelVersion)
+		s += fmt.Sprintf("  Architecture:     %s\n", info.Arch)
+		if info.VirtualizationSystem != "" {
+			s += fmt.Sprintf("  Virtualization:   %s (%s)\n", info.VirtualizationSystem, info.VirtualizationRole)
+		}
+		s += fmt.Sprintf("  Uptime:           %s\n", info.Uptime)
+		s += fmt.Sprintf("  Load Average:     %.2f, %.2f, %.2f\n\n", info.Load1, info.Load5, info.Load15)
 	}
 
 	// Public IP

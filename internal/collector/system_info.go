@@ -38,8 +38,14 @@ func (c *SystemCollector) Collect() (info HostInfo, err error) {
 	h, err := host.Info()
 	if err == nil {
 		info.Hostname = h.Hostname
+		info.OS = h.OS
+		info.Platform = h.Platform
+		info.PlatformFamily = h.PlatformFamily
+		info.PlatformVersion = h.PlatformVersion
 		info.KernelVersion = h.KernelVersion
 		info.Arch = h.KernelArch
+		info.VirtualizationSystem = h.VirtualizationSystem
+		info.VirtualizationRole = h.VirtualizationRole
 		info.Uptime = time.Duration(h.Uptime) * time.Second
 	} else {
 		info.Error = err
@@ -48,7 +54,9 @@ func (c *SystemCollector) Collect() (info HostInfo, err error) {
 	// Load Avg
 	l, err := load.Avg()
 	if err == nil {
-		info.LoadAvg = l.Load1
+		info.Load1 = l.Load1
+		info.Load5 = l.Load5
+		info.Load15 = l.Load15
 	}
 
 	// Resource Limits
