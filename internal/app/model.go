@@ -20,16 +20,16 @@ import (
 )
 
 const (
-	TabInterfaces   = 0
-	TabConnectivity = 1
-	TabDashboard    = 2
-	TabKernel       = 3
-	TabDNS          = 4
-	TabTunnels      = 5
+	TabDashboard    = 0
+	TabInterfaces   = 1
+	TabConnectivity = 2
+	TabDNS          = 3
+	TabTunnels      = 4
+	TabKernel       = 5
 	TabAbout        = 6
 )
 
-var tabs = []string{"Interfaces", "Connectivity", "Dashboard", "Kernel", "DNS", "Tunnels", "About"}
+var tabs = []string{"Dashboard", "Interfaces", "Connectivity", "DNS", "Tunnels", "Kernel", "About"}
 
 var dnsRecordTypes = []collector.DNSRecordType{
 	"Auto", collector.RecordA, collector.RecordAAAA, collector.RecordCNAME, collector.RecordMX,
@@ -576,17 +576,7 @@ func (m Model) renderInterfaces() string {
 	}
 	info := m.HostInfo
 
-	s := fmt.Sprintf("Hostname: %s\nKernel: %s\nArch: %s\nUptime: %s\nLoad: %.2f\n",
-		info.Hostname, info.KernelVersion, info.Arch, info.Uptime, info.LoadAvg)
-
-	s += fmt.Sprintf("\nLimits:\n  Max Open Files: %d\n  File Max: %d\n", info.MaxOpenFiles, info.FileMax)
-
-	s += "\nSysctl:\n"
-	for k, v := range info.SysctlParams {
-		s += fmt.Sprintf("  %s: %s\n", k, v)
-	}
-
-	s += "\nInterfaces:\n"
+	s := "Network Interfaces:\n"
 	for _, iface := range info.Interfaces {
 		s += fmt.Sprintf("  %s: %s (MTU: %d)\n", iface.Name, iface.IP, iface.MTU)
 		if iface.Driver != "" {
@@ -646,6 +636,17 @@ func (m Model) renderConnectivity() string {
 func (m Model) renderDashboard() string {
 	s := ""
 
+	// System Info
+	if m.LoadingSystem {
+		s += "Loading System Info...\n\n"
+	} else {
+		info := m.HostInfo
+		s += fmt.Sprintf("System: %s (%s)\n", ui.TitleStyle.Render(info.Hostname), info.Arch)
+		s += fmt.Sprintf("Kernel: %s\n", info.KernelVersion)
+		s += fmt.Sprintf("Uptime: %s\n", info.Uptime)
+		s += fmt.Sprintf("Load:   %.2f\n\n", info.LoadAvg)
+	}
+
 	// Public IP
 	s += "Public IP:\n"
 	if m.LoadingPublicIP {
@@ -693,6 +694,20 @@ func (m Model) renderKernel() string {
 
 	s += "\nUDP Issues:\n"
 	s += fmt.Sprintf("  RcvbufErrors: %d\n", k.UDPRcvbufErrors)
+
+	// System Limits & Sysctl (from HostInfo)
+	if !m.LoadingSystem {
+		s += "\nSystem Limits:\n"
+		s += fmt.Sprintf("  Max Open Files: %d\n", m.HostInfo.MaxOpenFiles)
+		s += fmt.Sprintf("  File Max:       %d\n", m.HostInfo.FileMax)
+
+		if len(m.HostInfo.SysctlParams) > 0 {
+			s += "\nSysctl Parameters:\n"
+			for k, v := range m.HostInfo.SysctlParams {
+				s += fmt.Sprintf("  %s: %s\n", k, v)
+			}
+		}
+	}
 
 	return s
 }
