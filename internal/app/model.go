@@ -52,16 +52,18 @@ type Model struct {
 	Traffic      collector.TrafficStats
 	Kernel       collector.KernelStats
 	NatInfo      []collector.NatInfo
+	PublicIP     collector.PublicIPInfo
 	DNSResult    *collector.DNSLookupResult
 	DNSPing      *collector.PingResult
 
 	// Collectors
-	sysCollector     *collector.SystemCollector
-	connCollector    *collector.ConnectivityCollector
-	trafficCollector *collector.TrafficCollector
-	kernelCollector  *collector.KernelCollector
-	natCollector     *collector.NatCollector
-	dnsCollector     *collector.DNSCollector
+	sysCollector      *collector.SystemCollector
+	connCollector     *collector.ConnectivityCollector
+	trafficCollector  *collector.TrafficCollector
+	kernelCollector   *collector.KernelCollector
+	natCollector      *collector.NatCollector
+	publicIPCollector *collector.PublicIPCollector
+	dnsCollector      *collector.DNSCollector
 
 	// DNS UI State
 	DNSServers         []collector.DNSServer
@@ -73,13 +75,14 @@ type Model struct {
 	SelectedProtocol   int // 0: UDP, 1: TCP, 2: DoT, 3: DoH
 
 	// Loading states
-	LoadingSystem  bool
-	LoadingConn    bool
-	LoadingTraffic bool
-	LoadingKernel  bool
-	LoadingNat     bool
-	LoadingDNS     bool
-	LoadingDNSPing bool
+	LoadingSystem   bool
+	LoadingConn     bool
+	LoadingTraffic  bool
+	LoadingKernel   bool
+	LoadingNat      bool
+	LoadingPublicIP bool
+	LoadingDNS      bool
+	LoadingDNSPing  bool
 }
 
 func NewModel(cfg *config.Config) Model {
@@ -149,18 +152,20 @@ func NewModel(cfg *config.Config) Model {
 	si.Width = 30
 
 	m := Model{
-		sysCollector:     collector.NewSystemCollector(),
-		connCollector:    collector.NewConnectivityCollector(),
-		trafficCollector: collector.NewTrafficCollector(),
-		kernelCollector:  k,
-		natCollector:     collector.NewNatCollector(stunTargets),
-		dnsCollector:     collector.NewDNSCollector(),
-		DNSServers:       dnsServers,
-		DNSInput:         ti,
-		DNSServerInput:   si,
-		LoadingSystem:    true,
-		LoadingConn:      true,
-		LoadingNat:       true,
+		sysCollector:      collector.NewSystemCollector(),
+		connCollector:     collector.NewConnectivityCollector(),
+		trafficCollector:  collector.NewTrafficCollector(),
+		kernelCollector:   k,
+		natCollector:      collector.NewNatCollector(stunTargets),
+		publicIPCollector: collector.NewPublicIPCollector(),
+		dnsCollector:      collector.NewDNSCollector(),
+		DNSServers:        dnsServers,
+		DNSInput:          ti,
+		DNSServerInput:    si,
+		LoadingSystem:     true,
+		LoadingConn:       true,
+		LoadingNat:        true,
+		LoadingPublicIP:   true,
 		// Traffic and Kernel start as false, will be triggered by Init/Tick
 	}
 
@@ -183,6 +188,7 @@ func (m Model) Init() tea.Cmd {
 		fetchSystemInfo(m.sysCollector),
 		fetchConnectivity(m.connCollector),
 		fetchNatInfo(m.natCollector),
+		fetchPublicIP(m.publicIPCollector),
 		// Start the tick loop
 		tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
 			return TickMsg(t)
@@ -196,6 +202,7 @@ type ConnectivityMsg collector.ConnectivityStats
 type TrafficMsg collector.TrafficStats
 type KernelMsg collector.KernelStats
 type NatMsg []collector.NatInfo
+type PublicIPMsg collector.PublicIPInfo
 type DNSMsg collector.DNSLookupResult
 type DNSPingMsg collector.PingResult
 type TickMsg time.Time
@@ -231,6 +238,12 @@ func fetchNatInfo(c *collector.NatCollector) tea.Cmd {
 			return NatMsg([]collector.NatInfo{{Error: err}})
 		}
 		return NatMsg(info)
+	}
+}
+
+func fetchPublicIP(c *collector.PublicIPCollector) tea.Cmd {
+	return func() tea.Msg {
+		return PublicIPMsg(c.Collect())
 	}
 }
 
@@ -410,6 +423,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case NatMsg:
 		m.NatInfo = []collector.NatInfo(msg)
 		m.LoadingNat = false
+
+	case PublicIPMsg:
+		m.PublicIP = collector.PublicIPInfo(msg)
+		m.LoadingPublicIP = false
 
 	case TrafficMsg:
 		m.LoadingTraffic = false
@@ -602,7 +619,23 @@ func (m Model) renderConnectivity() string {
 }
 
 func (m Model) renderDashboard() string {
-	s := "Traffic (Last 1s):\n"
+	s := ""
+
+	// Public IP
+	s += "Public IP:\n"
+	if m.LoadingPublicIP {
+		s += "  Querying...\n"
+	} else {
+		info := m.PublicIP
+		if info.Error != nil {
+			s += fmt.Sprintf("  %s\n", ui.ErrorStyle.Render(fmt.Sprintf("Error: %v", info.Error)))
+		} else {
+			s += fmt.Sprintf("  %s (via %s)\n", ui.SubtitleStyle.Render(info.IP), info.Provider)
+		}
+	}
+	s += "\n"
+
+	s += "Traffic (Last 1s):\n"
 	for name, t := range m.Traffic.Interfaces {
 		// Only show active interfaces
 		if t.RxRate == 0 && t.TxRate == 0 && t.RxBytes == 0 {

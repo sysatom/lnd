@@ -41,18 +41,29 @@ func TestDNSLookup_A(t *testing.T) {
 
 func TestDNSLookup_DoH(t *testing.T) {
 	c := NewDNSCollector()
+	// Try Google DoH as it might be more stable in some environments
 	server := DNSServer{
-		Name:    "Cloudflare",
-		Address: "https://cloudflare-dns.com/dns-query",
+		Name:    "Google",
+		Address: "https://dns.google/dns-query",
 		Proto:   ProtoDoH,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	res := c.Lookup(ctx, "example.com", RecordA, server)
 	if res.Error != nil {
-		t.Fatalf("DoH Lookup failed: %v", res.Error)
+		// Fallback to Cloudflare if Google fails
+		t.Logf("Google DoH failed: %v, trying Cloudflare", res.Error)
+		server = DNSServer{
+			Name:    "Cloudflare",
+			Address: "https://cloudflare-dns.com/dns-query",
+			Proto:   ProtoDoH,
+		}
+		res = c.Lookup(ctx, "example.com", RecordA, server)
+		if res.Error != nil {
+			t.Fatalf("DoH Lookup failed: %v", res.Error)
+		}
 	}
 
 	if len(res.Records) == 0 {

@@ -17,7 +17,7 @@ type ConnectivityCollector struct {
 
 func NewConnectivityCollector() *ConnectivityCollector {
 	return &ConnectivityCollector{
-		Targets: []string{"8.8.8.8", "baidu.com"},
+		Targets: []string{"8.8.8.8", "bing.com", "114.114.114.114", "qq.com"},
 	}
 }
 
