@@ -7,7 +7,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/miekg/dns v1.1.69
-	github.com/pion/dtls/v3 v3.0.8
+	github.com/pion/dtls/v3 v3.0.9
 	github.com/pion/stun/v3 v3.0.2
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/shirou/gopsutil/v3 v3.24.5
