@@ -10,4 +10,24 @@ dns_servers:
     address: "1.1.1.1:853"
     proto: "DoT"
 
+tunnels:
+  - name: "Google HTTP"
+    target: "google.com:80"
+    app: "http"
+    transport: "tcp"
 
+  - name: "Secure WebSocket"
+    target: "echo.websocket.org:443"
+    app: "ws"
+    transport: "tls" # Effectively WSS
+
+  - name: "HTTP via SOCKS5"
+    target: "google.com:80"
+    app: "http"
+    transport: "socks5"
+    proxy: "127.0.0.1:1080"
+
+  - name: "Test SOCKS5 Server"
+    target: "my-socks-server:1080"
+    app: "socks5"
+    transport: "tcp"

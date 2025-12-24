@@ -13,9 +13,20 @@ type DNSServerConfig struct {
 	Proto   string `yaml:"proto"`
 }
 
+type TunnelConfig struct {
+	Name      string `yaml:"name"`
+	Target    string `yaml:"target"`
+	App       string `yaml:"app"`       // http, ws, tcp, udp, socks5, tls
+	Transport string `yaml:"transport"` // tcp, udp, tls, dtls, socks5, http
+	Proxy     string `yaml:"proxy"`     // Address for socks5/http proxy
+	User      string `yaml:"user"`      // Proxy user
+	Password  string `yaml:"password"`  // Proxy password
+}
+
 type Config struct {
 	StunServers []string          `yaml:"stun_servers"`
 	DNSServers  []DNSServerConfig `yaml:"dns_servers"`
+	Tunnels     []TunnelConfig    `yaml:"tunnels"`
 }
 
 func Default() *Config {
@@ -25,6 +36,7 @@ func Default() *Config {
 			"stun.l.google.com:19302",
 		},
 		DNSServers: []DNSServerConfig{},
+		Tunnels:    []TunnelConfig{},
 	}
 }
 

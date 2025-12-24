@@ -25,10 +25,11 @@ const (
 	TabDashboard    = 2
 	TabKernel       = 3
 	TabDNS          = 4
-	TabAbout        = 5
+	TabTunnels      = 5
+	TabAbout        = 6
 )
 
-var tabs = []string{"Interfaces", "Connectivity", "Dashboard", "Kernel", "DNS", "About"}
+var tabs = []string{"Interfaces", "Connectivity", "Dashboard", "Kernel", "DNS", "Tunnels", "About"}
 
 var dnsRecordTypes = []collector.DNSRecordType{
 	"Auto", collector.RecordA, collector.RecordAAAA, collector.RecordCNAME, collector.RecordMX,
@@ -47,14 +48,15 @@ type Model struct {
 	Viewport  viewport.Model
 
 	// Data
-	HostInfo     collector.HostInfo
-	Connectivity collector.ConnectivityStats
-	Traffic      collector.TrafficStats
-	Kernel       collector.KernelStats
-	NatInfo      []collector.NatInfo
-	PublicIP     collector.PublicIPInfo
-	DNSResult    *collector.DNSLookupResult
-	DNSPing      *collector.PingResult
+	HostInfo      collector.HostInfo
+	Connectivity  collector.ConnectivityStats
+	Traffic       collector.TrafficStats
+	Kernel        collector.KernelStats
+	NatInfo       []collector.NatInfo
+	PublicIP      collector.PublicIPInfo
+	DNSResult     *collector.DNSLookupResult
+	DNSPing       *collector.PingResult
+	TunnelResults []collector.TunnelResult
 
 	// Collectors
 	sysCollector      *collector.SystemCollector
@@ -64,6 +66,7 @@ type Model struct {
 	natCollector      *collector.NatCollector
 	publicIPCollector *collector.PublicIPCollector
 	dnsCollector      *collector.DNSCollector
+	tunnelCollector   *collector.TunnelCollector
 
 	// DNS UI State
 	DNSServers         []collector.DNSServer
@@ -83,6 +86,7 @@ type Model struct {
 	LoadingPublicIP bool
 	LoadingDNS      bool
 	LoadingDNSPing  bool
+	LoadingTunnels  bool
 }
 
 func NewModel(cfg *config.Config) Model {
@@ -159,6 +163,7 @@ func NewModel(cfg *config.Config) Model {
 		natCollector:      collector.NewNatCollector(stunTargets),
 		publicIPCollector: collector.NewPublicIPCollector(),
 		dnsCollector:      collector.NewDNSCollector(),
+		tunnelCollector:   collector.NewTunnelCollector(cfg.Tunnels),
 		DNSServers:        dnsServers,
 		DNSInput:          ti,
 		DNSServerInput:    si,
@@ -166,6 +171,7 @@ func NewModel(cfg *config.Config) Model {
 		LoadingConn:       true,
 		LoadingNat:        true,
 		LoadingPublicIP:   true,
+		LoadingTunnels:    true,
 		// Traffic and Kernel start as false, will be triggered by Init/Tick
 	}
 
@@ -189,6 +195,7 @@ func (m Model) Init() tea.Cmd {
 		fetchConnectivity(m.connCollector),
 		fetchNatInfo(m.natCollector),
 		fetchPublicIP(m.publicIPCollector),
+		fetchTunnels(m.tunnelCollector),
 		// Start the tick loop
 		tea.Tick(1*time.Second, func(t time.Time) tea.Msg {
 			return TickMsg(t)
@@ -205,6 +212,7 @@ type NatMsg []collector.NatInfo
 type PublicIPMsg collector.PublicIPInfo
 type DNSMsg collector.DNSLookupResult
 type DNSPingMsg collector.PingResult
+type TunnelMsg []collector.TunnelResult
 type TickMsg time.Time
 
 // Commands
@@ -244,6 +252,12 @@ func fetchNatInfo(c *collector.NatCollector) tea.Cmd {
 func fetchPublicIP(c *collector.PublicIPCollector) tea.Cmd {
 	return func() tea.Msg {
 		return PublicIPMsg(c.Collect())
+	}
+}
+
+func fetchTunnels(c *collector.TunnelCollector) tea.Cmd {
+	return func() tea.Msg {
+		return TunnelMsg(c.Collect())
 	}
 }
 
@@ -474,6 +488,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		res := collector.PingResult(msg)
 		m.DNSPing = &res
 
+	case TunnelMsg:
+		m.LoadingTunnels = false
+		m.TunnelResults = []collector.TunnelResult(msg)
+		// Schedule next update (e.g., every 30 seconds or manual refresh)
+		// For now, let's refresh every 60 seconds
+		cmds = append(cmds, tea.Tick(60*time.Second, func(t time.Time) tea.Msg {
+			return fetchTunnels(m.tunnelCollector)()
+		}))
+
 	case TickMsg:
 		// Trigger updates if not already loading
 		if !m.LoadingTraffic {
@@ -529,6 +552,8 @@ func (m Model) View() string {
 		content = m.renderKernel()
 	case TabDNS:
 		content = m.renderDNS()
+	case TabTunnels:
+		content = m.renderTunnels()
 	case TabAbout:
 		content = m.renderAbout()
 	}
@@ -759,5 +784,69 @@ func (m Model) renderDNS() string {
 		}
 	}
 
+	return s
+}
+
+func (m Model) renderTunnels() string {
+	s := ui.TitleStyle.Render("Tunnel Connectivity Tests") + "\n\n"
+
+	if m.LoadingTunnels {
+		return s + "Running Tunnel Tests..."
+	}
+
+	if len(m.TunnelResults) == 0 {
+		return s + "No tunnels configured in config.yaml"
+	}
+
+	// Column Widths
+	wName := 20
+	wApp := 8
+	wTrans := 8
+	wTarget := 30
+	wStatus := 10
+	wLatency := 10
+
+	// Table Header
+	header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s",
+		wName, "Name", wApp, "App", wTrans, "Trans", wTarget, "Target", wStatus, "Status", wLatency, "Latency")
+
+	s += ui.SubtitleStyle.Render(header) + "\n"
+	s += ui.DividerStyle.Render(strings.Repeat("-", len(header))) + "\n"
+
+	for _, res := range m.TunnelResults {
+		statusStyle := ui.SubtitleStyle
+		if res.Status != "OK" {
+			statusStyle = ui.ErrorStyle
+		}
+
+		latency := fmt.Sprintf("%dms", res.Latency.Milliseconds())
+		if res.Status != "OK" {
+			latency = "-"
+		}
+
+		row := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s",
+			wName, truncate(res.Name, wName-1),
+			wApp, res.App,
+			wTrans, res.Transport,
+			wTarget, truncate(res.Target, wTarget-1),
+			wStatus, statusStyle.Render(res.Status),
+			wLatency, latency,
+		)
+		s += row + "\n"
+
+		if res.Error != nil {
+			// Indent and style the error
+			errMsg := fmt.Sprintf("  └─ %v", res.Error)
+			s += ui.SubtleStyle.Render(errMsg) + "\n"
+		}
+	}
+
+	return s
+}
+
+func truncate(s string, max int) string {
+	if len(s) > max {
+		return s[:max-3] + "..."
+	}
 	return s
 }
