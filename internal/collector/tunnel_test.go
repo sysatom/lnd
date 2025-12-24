@@ -169,7 +169,7 @@ func handleSocks5(conn net.Conn) {
 	}
 	port := int(portBuf[0])<<8 | int(portBuf[1])
 
-	targetAddr := fmt.Sprintf("%s:%d", host, port)
+	targetAddr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 
 	if cmd == 1 { // CONNECT
 		targetConn, err := net.Dial("tcp", targetAddr)

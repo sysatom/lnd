@@ -72,7 +72,7 @@ func (c *NatCollector) probe(target StunTarget) NatInfo {
 
 	// 1. Resolve and Dial STUN server
 	// We use net.Dial to get the local address and ensure we are connected
-	serverAddrStr := fmt.Sprintf("%s:%d", target.Host, target.Port)
+	serverAddrStr := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Port))
 	conn, err := net.Dial("udp4", serverAddrStr)
 	if err != nil {
 		info.Error = fmt.Errorf("dialing stun host: %w", err)
