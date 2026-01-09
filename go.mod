@@ -7,8 +7,8 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/miekg/dns v1.1.69
-	github.com/pion/dtls/v3 v3.0.9
-	github.com/pion/stun/v3 v3.0.2
+	github.com/pion/dtls/v3 v3.0.10
+	github.com/pion/stun/v3 v3.1.1
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/vishvananda/netlink v1.3.1
@@ -36,7 +36,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/pion/logging v0.2.4 // indirect
-	github.com/pion/transport/v3 v3.1.1 // indirect
+	github.com/pion/transport/v4 v4.0.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
